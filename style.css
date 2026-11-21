@@ -1,0 +1,707 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Montserrat:wght@400;500;600&display=swap");
+
+:root {
+  --ds-color-text-primary: #1e232c;
+  --ds-color-text-primary-bluish: #152443;
+  --ds-color-text-link-blue: #234792;
+  --ds-color-text-secondary: rgba(0, 0, 0, 0.7);
+  --ds-color-text-description: rgba(0, 0, 0, 0.65);
+  --ds-color-text-placeholder: #8691a1;
+
+  --ds-color-brand: #4d6bfe;
+  --ds-color-brand-deep: #3a65c2;
+  --ds-color-brand-medium-reverse: #4176e6;
+  --ds-color-brand-light-reverse: #73a3d2;
+
+  --ds-color-bg-page: #f9f8f8;
+  --ds-color-bg-surface-1: hsla(0, 0%, 100%, 0.36);
+  --ds-color-bg-surface-2: hsla(0, 0%, 100%, 0.24);
+  --ds-color-bg-surface-raised: hsla(0, 0%, 100%, 0.72);
+  --ds-color-bg-overlay: #ffffff;
+  --ds-color-bg-hover: rgba(0, 0, 0, 0.04);
+
+  --ds-color-border-subtle: rgba(0, 0, 0, 0.06);
+  --ds-color-border-default: rgba(0, 0, 0, 0.1);
+  --ds-color-border-secondary: rgba(9, 45, 78, 0.14);
+
+  --ds-btn-secondary-bg: hsla(0, 0%, 100%, 0.44);
+  --ds-btn-secondary-text: #1e232c;
+  --ds-btn-secondary-border: rgba(9, 45, 78, 0.18);
+  --ds-btn-secondary-hover-bg: rgba(0, 0, 0, 0.05);
+  --ds-btn-secondary-hover-border: rgba(9, 45, 78, 0.36);
+
+  --ds-radius-pill: 100px;
+  --ds-radius-card: 24px;
+  --ds-radius-panel: 16px;
+  --ds-radius-media: 12px;
+  --ds-radius-sm: 8px;
+
+  --ds-blur-glass: 12px;
+  --ds-shadow-card: 0 0 0 1px #f1f5f9, 0 2px 4px rgba(0, 0, 0, 0.05), 0 12px 24px rgba(0, 0, 0, 0.05);
+  --ds-shadow-dropdown: 0 0 1px 0 rgba(0, 0, 0, 0.2), 0 0 4px 0 rgba(0, 0, 0, 0.02), 0 12px 32px 0 rgba(0, 0, 0, 0.08);
+
+  --ds-font-body: "DM Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --ds-font-display: "Montserrat", var(--ds-font-body);
+  --ds-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --ds-ease: cubic-bezier(0.44, 0, 0.56, 1);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overscroll-behavior: none;
+}
+
+body {
+  position: relative;
+  min-height: 100vh;
+  font-family: var(--ds-font-body);
+  color: var(--ds-color-text-primary);
+  background-color: var(--ds-color-bg-page);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+}
+
+/* ===== DeepSeek Hero Backdrop (Gradient + WebGL Shader + Flow Grid) ===== */
+
+.ds-hero-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: min(100vh, 880px);
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background: linear-gradient(180deg, #9cc1e7 0%, rgba(250, 250, 250, 0) 100%);
+}
+
+.ds-hero-shader-wrap,
+.ds-hero-grid-wrap {
+  position: absolute;
+  inset: 0;
+  mask-image: linear-gradient(#000000fc 0%, #000000e8 12%, transparent 100%);
+  -webkit-mask-image: linear-gradient(#000000fc 0%, #000000e8 12%, transparent 100%);
+}
+
+.ds-hero-shader-wrap {
+  z-index: 0;
+}
+
+.ds-hero-grid-wrap {
+  z-index: 2;
+}
+
+.ds-hero-shader-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.ds-flow-field-canvas {
+  display: none;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  pointer-events: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ds-flow-field-canvas {
+    display: block;
+  }
+}
+
+/* Difference-blend spotlight cursor over h1 */
+.ds-cursor-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  display: block;
+  pointer-events: none;
+  z-index: 9999;
+  mix-blend-mode: difference;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .ds-cursor-canvas {
+    display: none;
+  }
+}
+
+/* ===== Wide-Screen Container ===== */
+
+.container {
+  position: relative;
+  z-index: 10;
+  width: min(100% - 64px, 1440px);
+  margin-inline: auto;
+  padding: 56px 0 88px;
+}
+
+@media (min-width: 1680px) {
+  .container {
+    width: min(100% - 96px, 1520px);
+  }
+}
+
+@media (max-width: 767px) {
+  .container {
+    width: min(100% - 32px, 100%);
+    padding: 28px 0 64px;
+  }
+}
+
+/* ===== Profile Card (DeepSeek Hero Frosted Glass Card) ===== */
+
+.profile-card {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 28px 34px;
+  margin-bottom: 28px;
+  background: var(--ds-color-bg-surface-1);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 2px solid hsla(0, 0%, 100%, 0.8);
+  border-radius: var(--ds-radius-card);
+  box-shadow:
+    0 0 0 1px rgba(9, 45, 78, 0.04),
+    0 8px 32px rgba(21, 36, 67, 0.06);
+  transition: background-color 0.25s ease, border-color 0.25s ease;
+  animation: dsFadeUp 0.65s var(--ds-ease) both;
+}
+
+@media (hover: hover) {
+  .profile-card:hover {
+    background: hsla(0, 0%, 100%, 0.44);
+    border-color: hsla(0, 0%, 100%, 0.92);
+  }
+}
+
+.avatar {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: hsla(0, 0%, 100%, 0.72);
+  border: 2px solid hsla(0, 0%, 100%, 0.95);
+  box-shadow: 0 4px 16px rgba(21, 36, 67, 0.1);
+}
+
+.profile-info {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.profile-info h1 {
+  margin: 0;
+  width: fit-content;
+  font-family: var(--ds-font-display);
+  font-size: clamp(28px, 3vw, 40px);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--ds-color-text-primary-bluish);
+  opacity: 0.94;
+}
+
+.contact-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* DeepSeek Secondary Pill Buttons */
+.contact-list li a {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-btn-secondary-bg);
+  color: var(--ds-btn-secondary-text);
+  border: 1px solid var(--ds-btn-secondary-border);
+  backdrop-filter: blur(var(--ds-blur-glass));
+  -webkit-backdrop-filter: blur(var(--ds-blur-glass));
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.2;
+  text-decoration: none;
+  overflow: hidden;
+  isolation: isolate;
+  transition: border-color 0.35s ease, color 0.2s ease;
+}
+
+.contact-list li a::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 150%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--ds-btn-secondary-hover-bg);
+  opacity: 0;
+  z-index: -1;
+  transform: translate(-50%, -50%) scale(0);
+  transition: transform 0.36s ease-out, opacity 0.1s ease;
+}
+
+@media (hover: hover) {
+  .contact-list li a:hover {
+    border-color: var(--ds-btn-secondary-hover-border);
+  }
+
+  .contact-list li a:hover::after {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.contact-list li a:focus-visible {
+  outline: 2px solid var(--ds-color-brand);
+  outline-offset: 2px;
+}
+
+@media (max-width: 767px) {
+  .profile-card {
+    flex-direction: column;
+    text-align: center;
+    padding: 24px 20px;
+    gap: 18px;
+  }
+
+  .profile-info {
+    align-items: center;
+  }
+
+  .profile-info h1 {
+    margin-inline: auto;
+  }
+
+  .contact-list {
+    justify-content: center;
+  }
+}
+
+/* ===== Sticky Floating Pill Navigation (DeepSeek Header / Toggle Aesthetic) ===== */
+
+.tab-nav {
+  position: sticky;
+  top: 14px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto 28px;
+  padding: 5px;
+  border-radius: var(--ds-radius-pill);
+  background: hsla(0, 0%, 100%, 0.48);
+  border: 1px solid var(--ds-color-border-default);
+  backdrop-filter: blur(var(--ds-blur-glass));
+  -webkit-backdrop-filter: blur(var(--ds-blur-glass));
+  box-shadow: 0 2px 12px rgba(21, 36, 67, 0.04);
+  transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+  animation: dsFadeUp 0.65s var(--ds-ease) 0.06s both;
+}
+
+.tab-nav.is-scrolled {
+  background: hsla(0, 0%, 100%, 0.82);
+  border-color: rgba(9, 45, 78, 0.16);
+  box-shadow: var(--ds-shadow-dropdown);
+}
+
+.tab-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 20px;
+  border-radius: var(--ds-radius-pill);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ds-color-text-secondary);
+  font-family: var(--ds-font-body);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  isolation: isolate;
+  transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+@media (hover: hover) {
+  .tab-btn:hover {
+    color: var(--ds-color-text-primary);
+    background: var(--ds-color-bg-hover);
+  }
+}
+
+.tab-btn.active {
+  background-color: rgba(65, 118, 230, 0.12);
+  color: var(--ds-color-brand-medium-reverse);
+  border-color: rgba(65, 118, 230, 0.3);
+  box-shadow: 0 1px 3px rgba(65, 118, 230, 0.08);
+}
+
+@media (hover: hover) {
+  .tab-btn.active:hover {
+    background-color: rgba(65, 118, 230, 0.18);
+    color: var(--ds-color-brand-medium-reverse);
+  }
+}
+
+.tab-btn:focus-visible {
+  outline: 2px solid var(--ds-color-brand);
+  outline-offset: 2px;
+}
+
+@media (max-width: 580px) {
+  .tab-nav {
+    width: 100%;
+    border-radius: var(--ds-radius-panel);
+  }
+
+  .tab-btn {
+    flex: 1 1 auto;
+    padding: 9px 12px;
+    font-size: 13px;
+  }
+}
+
+/* ===== 4-Column Wide-Screen Grid ===== */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+  align-items: stretch;
+}
+
+@media (max-width: 1199px) {
+  .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 899px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+}
+
+@media (max-width: 579px) {
+  .grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+}
+
+/* ===== Card + 16:9 Preview ===== */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-radius: var(--ds-radius-panel);
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  background: var(--ds-color-bg-surface-raised);
+  backdrop-filter: blur(var(--ds-blur-glass));
+  -webkit-backdrop-filter: blur(var(--ds-blur-glass));
+  border: 1px solid var(--ds-color-border-subtle);
+  box-shadow: var(--ds-shadow-card);
+  transition:
+    transform 0.25s var(--ds-ease),
+    background-color 0.25s ease,
+    border-color 0.25s ease,
+    box-shadow 0.25s ease;
+  animation: dsCardEnter 0.42s var(--ds-ease) both;
+  animation-delay: calc(min(var(--card-index, 0), 12) * 22ms);
+}
+
+@media (hover: hover) {
+  .card:hover {
+    transform: translateY(-3px);
+    background: rgba(255, 255, 255, 0.94);
+    border-color: rgba(65, 118, 230, 0.28);
+    box-shadow:
+      0 0 0 1px rgba(65, 118, 230, 0.08),
+      0 8px 24px rgba(21, 36, 67, 0.08),
+      0 16px 32px rgba(21, 36, 67, 0.05);
+  }
+}
+
+.card:focus-visible {
+  outline: 2px solid var(--ds-color-brand);
+  outline-offset: 2px;
+}
+
+.card-preview {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #eef3fb 0%, #f5f7fa 100%);
+  border-bottom: 1px solid var(--ds-color-border-subtle);
+}
+
+.card-preview.is-loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    110deg,
+    transparent 25%,
+    rgba(255, 255, 255, 0.65) 50%,
+    transparent 75%
+  );
+  background-size: 200% 100%;
+  animation: dsShimmer 1.5s linear infinite;
+  pointer-events: none;
+}
+
+.card-preview img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  object-position: center;
+  background: #ffffff;
+  transition: transform 0.45s var(--ds-ease), opacity 0.25s ease;
+}
+
+.card-preview img.is-contain {
+  object-fit: contain;
+  padding: 10px;
+}
+
+@media (hover: hover) {
+  .card:hover .card-preview img:not(.is-contain) {
+    transform: scale(1.03);
+  }
+}
+
+.card-preview-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(138, 163, 214, 0.22), transparent 60%),
+    linear-gradient(135deg, #f2f5fb 0%, #eaf0fa 100%);
+  color: var(--ds-color-text-primary-bluish);
+  font-size: 26px;
+  line-height: 1;
+  user-select: none;
+}
+
+.card-preview-fallback span {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: var(--ds-radius-pill);
+  background: rgba(65, 118, 230, 0.1);
+  border: 1px solid rgba(65, 118, 230, 0.22);
+  color: var(--ds-color-brand-medium-reverse);
+  font-family: var(--ds-font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px 18px;
+  flex: 1;
+  min-width: 0;
+}
+
+.card-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.card-title {
+  margin: 0;
+  font-family: var(--ds-font-body);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  color: var(--ds-color-text-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.card-arrow {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  margin-top: 4px;
+  color: var(--ds-color-text-placeholder);
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+@media (hover: hover) {
+  .card:hover .card-arrow {
+    color: var(--ds-color-brand-medium-reverse);
+    transform: translate(2px, -2px);
+  }
+}
+
+.card-desc {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--ds-color-text-description);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ===== Loading / Empty / Error States ===== */
+
+.loading-state {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 64px 24px;
+  border-radius: var(--ds-radius-card);
+  background: hsla(0, 0%, 100%, 0.55);
+  backdrop-filter: blur(var(--ds-blur-glass));
+  -webkit-backdrop-filter: blur(var(--ds-blur-glass));
+  border: 1px solid var(--ds-color-border-subtle);
+  box-shadow: var(--ds-shadow-card);
+  color: var(--ds-color-text-secondary);
+  font-size: 15px;
+  text-align: center;
+}
+
+.loading-state.is-error {
+  color: #ec1313;
+  background: rgba(254, 242, 242, 0.78);
+  border-color: rgba(236, 19, 19, 0.2);
+}
+
+.ds-loading {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  color: var(--ds-color-brand-medium-reverse);
+  flex-shrink: 0;
+}
+
+.ds-loading svg {
+  width: 100%;
+  height: 100%;
+  animation: dsSpin 0.6s linear infinite;
+}
+
+/* ===== Animations & Reduced Motion ===== */
+
+@keyframes dsFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dsCardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dsShimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes dsSpin {
+  0% {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .profile-card,
+  .tab-nav,
+  .card,
+  .card-preview.is-loading::after,
+  .ds-loading svg {
+    animation: none !important;
+  }
+
+  .card,
+  .card-preview img,
+  .card-arrow,
+  .contact-list li a::after {
+    transition: none !important;
+  }
+}
