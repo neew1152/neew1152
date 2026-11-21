@@ -2,9 +2,11 @@
   "use strict";
 
   const USER = "neew1152";
-  const EMPTY_LABELS = { repos: "repositories", certs: "certificates", gists: "Gists" };
+  const CREDS_DIR = "credentials";
+  const EMPTY_LABELS = { repos: "repositories", certs: "Credentials", gists: "Gists" };
   const TABS = Object.keys(EMPTY_LABELS);
   const IMG_EXTS = new Set(["png", "jpg", "jpeg", "webp", "gif"]);
+  const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
   const PREVIEW_CACHE_KEY = `portal_previews_${USER}`;
   const NEGATIVE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -19,6 +21,9 @@
   const RE_BLOB_ORIGIN = /^blob:(?:https?:\/\/|null\/)/i;
   const RE_CTRL = /[\u0000-\u001f\u007f]/;
   const RE_REL_PREFIX = /^(?:\.\/|\/)+/;
+  const RE_DIR_TITLE = /^(?:Directory listing for|Index of)\b/i;
+  const RE_DIR_CLASS = /(?:^|[\s_-])(?:dir|directory|folder)(?:$|[\s_-])/i;
+  const RE_EXT_LIKELY = /\.[a-z0-9]{1,10}$/i;
 
   if (typeof pdfjsLib !== "undefined") {
     pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -26,12 +31,13 @@
   }
 
   let currentTab = "repos";
+  let currentCertCategory = "all";
   let ready = false;
   let previewCache = null;
   let previewCacheDirty = false;
   let flushTimer = 0;
 
-  const state = { repos: [], certs: [], gists: [], errors: {} };
+  const state = { repos: [], certs: [], certCategories: [], gists: [], errors: {} };
   const tasks = {};
   const renderedBoxes = new Map();
 
@@ -152,6 +158,7 @@
       if (currentTab === id) return;
       currentTab = id;
       sync();
+      syncSubtabs();
       if (!ready) return;
       render();
       warmPreviews(id);
@@ -186,6 +193,100 @@
     });
   }
 
+  function getSubtabNav() {
+    let nav = document.getElementById("subtab-nav");
+    if (!nav) {
+      const grid = document.getElementById("grid-container");
+      if (!grid || !grid.parentNode) return null;
+      nav = document.createElement("div");
+      nav.id = "subtab-nav";
+      nav.className = "subtab-nav";
+      nav.hidden = true;
+      grid.parentNode.insertBefore(nav, grid);
+    }
+    return nav;
+  }
+
+  function buildSubtabs() {
+    const nav = getSubtabNav();
+    if (!nav) return;
+
+    const cats = state.certCategories;
+    if (cats.length <= 1) {
+      nav.hidden = true;
+      nav.replaceChildren();
+      return;
+    }
+
+    if (currentCertCategory !== "all" && !cats.some((c) => c.id === currentCertCategory)) {
+      currentCertCategory = "all";
+    }
+
+    nav.setAttribute("role", "tablist");
+    nav.setAttribute("aria-label", "Credential categories");
+
+    const entries = [
+      { id: "all", label: "All", count: state.certs.length },
+      ...cats.map((c) => ({ id: c.id, label: c.title, count: c.items.length })),
+    ];
+
+    const buttons = entries.map((entry) => {
+      const btn = el(
+        "button",
+        "subtab-btn",
+        entry.label,
+        el("span", "subtab-count", String(entry.count))
+      );
+      btn.type = "button";
+      btn.dataset.subtab = entry.id;
+      btn.setAttribute("role", "tab");
+      return btn;
+    });
+
+    const activate = (id) => {
+      if (currentCertCategory === id) return;
+      currentCertCategory = id;
+      syncSubtabs();
+      render();
+    };
+
+    buttons.forEach((btn, idx) => {
+      const id = btn.dataset.subtab;
+      btn.addEventListener("click", () => activate(id));
+      btn.addEventListener("keydown", (e) => {
+        let nextIdx = -1;
+        if (e.key === "ArrowRight") nextIdx = (idx + 1) % buttons.length;
+        else if (e.key === "ArrowLeft") nextIdx = (idx - 1 + buttons.length) % buttons.length;
+        else if (e.key === "Home") nextIdx = 0;
+        else if (e.key === "End") nextIdx = buttons.length - 1;
+        if (nextIdx >= 0) {
+          e.preventDefault();
+          buttons[nextIdx].focus();
+          activate(buttons[nextIdx].dataset.subtab);
+        }
+      });
+    });
+
+    nav.replaceChildren(...buttons);
+    syncSubtabs();
+  }
+
+  function syncSubtabs() {
+    const nav = document.getElementById("subtab-nav");
+    if (!nav) return;
+
+    const show = currentTab === "certs" && state.certCategories.length > 1;
+    nav.hidden = !show;
+    if (!show) return;
+
+    for (const btn of nav.querySelectorAll(".subtab-btn")) {
+      const active = btn.dataset.subtab === currentCertCategory;
+      btn.classList.toggle("active", active);
+      btn.setAttribute("aria-selected", String(active));
+      btn.setAttribute("tabindex", active ? "0" : "-1");
+    }
+  }
+
   async function loadData() {
     const grid = document.getElementById("grid-container");
     if (!grid) return;
@@ -208,6 +309,8 @@
           size: r.size,
           language: r.language,
           pushed_at: r.pushed_at,
+          homepage: r.homepage,
+          has_pages: r.has_pages,
         });
       }
       return out;
@@ -237,18 +340,22 @@
 
     try {
       const user = encodeURIComponent(USER);
+      const reposPromise = fetchJson(
+        `https://api.github.com/users/${user}/repos?sort=updated&per_page=100`,
+        `portal_cache_repos_${USER}`,
+        shrinkRepos
+      );
+      const gistsPromise = fetchJson(
+        `https://api.github.com/users/${user}/gists?per_page=100`,
+        `portal_cache_gists_${USER}`,
+        shrinkGists
+      );
+      const certsPromise = loadCredentials(reposPromise);
+
       const [reposRes, certsRes, gistsRes] = await Promise.all([
-        fetchJson(
-          `https://api.github.com/users/${user}/repos?sort=updated&per_page=100`,
-          `portal_cache_repos_${USER}`,
-          shrinkRepos
-        ),
-        fetchJson("data.json"),
-        fetchJson(
-          `https://api.github.com/users/${user}/gists?per_page=100`,
-          `portal_cache_gists_${USER}`,
-          shrinkGists
-        ),
+        reposPromise,
+        certsPromise,
+        gistsPromise,
       ]);
 
       const now = Date.now();
@@ -256,29 +363,9 @@
       const validRepoKeys = Array.isArray(reposRes.data) ? new Set() : null;
       const validGistKeys = Array.isArray(gistsRes.data) ? new Set() : null;
 
-      const cJson = certsRes.data;
-      if (cJson) {
-        const rawCerts = Array.isArray(cJson) ? cJson : Array.isArray(cJson.certs) ? cJson.certs : [];
-        const certs = [];
-        for (const c of rawCerts) {
-          if (!c || typeof c.filename !== "string" || !c.filename.trim()) continue;
-          const ext = extOf(c.filename);
-          const rel = encodePath(c.filename);
-          const href = rel ? `assets/certs/${rel}` : "#";
-          const preview = IMG_EXTS.has(ext) ? href : sanitizeUrl(c.preview_image, true) || null;
-          certs.push({
-            isCert: true,
-            filename: c.filename,
-            href,
-            title: titleOf(stemOf(c.filename)),
-            desc: c.description || "",
-            alwaysDesc: true,
-            preview,
-            loading: !preview && ext === "pdf" && href !== "#" && typeof pdfjsLib !== "undefined",
-            fallback: ["📄", (ext || "FILE").toUpperCase()],
-          });
-        }
-        state.certs = certs;
+      if (certsRes.data) {
+        state.certCategories = certsRes.data.categories;
+        state.certs = certsRes.data.flat;
       } else {
         state.errors.certs = certsRes.error;
       }
@@ -370,6 +457,7 @@
         scheduleCacheFlush();
       }
 
+      buildSubtabs();
       ready = true;
       render();
       warmPreviews(currentTab).then(() => {
@@ -380,6 +468,344 @@
     } finally {
       grid.setAttribute("aria-busy", "false");
     }
+  }
+
+  /* =========================================================
+     Automatic Credential Subcategory Discovery
+     ========================================================= */
+
+  async function loadCredentials(reposPromise) {
+    const discovery = await discoverCredentialFolders(reposPromise);
+    if (!discovery.folders) {
+      return { error: discovery.error || "Unable to discover credential categories." };
+    }
+
+    const results = await Promise.all(
+      discovery.folders.map(async (folder) => {
+        const subcatRel = encodePath(folder);
+        const res = await fetchJson(`${CREDS_DIR}/${subcatRel}/data.json`);
+        return { folder, subcatRel, res };
+      })
+    );
+
+    const categories = [];
+    let fetchError = null;
+
+    for (const { folder, subcatRel, res } of results) {
+      if (!res.data) {
+        if (res.status !== 404 && !fetchError) fetchError = res.error;
+        continue;
+      }
+
+      const json = res.data;
+      const rawItems = Array.isArray(json)
+        ? json
+        : Array.isArray(json.credentials)
+          ? json.credentials
+          : Array.isArray(json.certs)
+            ? json.certs
+            : Array.isArray(json.items)
+              ? json.items
+              : [];
+
+      const customTitle =
+        !Array.isArray(json) && typeof (json.title || json.label) === "string"
+          ? (json.title || json.label).trim()
+          : "";
+      const order =
+        !Array.isArray(json) && typeof json.order === "number" && Number.isFinite(json.order)
+          ? json.order
+          : Infinity;
+      const catTitle = customTitle || categoryTitleOf(folder);
+
+      const items = [];
+      for (const c of rawItems) {
+        if (!c || typeof c.filename !== "string" || !c.filename.trim()) continue;
+        const ext = extOf(c.filename);
+        const fileRel = encodePath(c.filename);
+        const href = subcatRel && fileRel ? `${CREDS_DIR}/${subcatRel}/${fileRel}` : "#";
+        const preview = IMG_EXTS.has(ext)
+          ? href
+          : resolveCertPreview(c.preview_image, subcatRel);
+
+        items.push({
+          isCert: true,
+          category: folder,
+          categoryTitle: catTitle,
+          filename: c.filename,
+          href,
+          title: titleOf(stemOf(c.filename)),
+          desc: c.description || "",
+          alwaysDesc: true,
+          preview,
+          loading: !preview && ext === "pdf" && href !== "#" && typeof pdfjsLib !== "undefined",
+          fallback: ["📄", (ext || "FILE").toUpperCase()],
+        });
+      }
+
+      if (items.length > 0) {
+        categories.push({ id: folder, title: catTitle, order, items });
+      }
+    }
+
+    categories.sort((a, b) => {
+      if (a.order !== b.order) return a.order - b.order;
+      return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
+    });
+
+    if (!categories.length && fetchError) {
+      return { error: fetchError };
+    }
+
+    return {
+      data: {
+        categories,
+        flat: categories.flatMap((c) => c.items),
+      },
+    };
+  }
+
+  async function discoverCredentialFolders(reposPromise) {
+    const host = window.location.hostname.toLowerCase();
+    const isGithubPages = host.endsWith(".github.io");
+
+    if (!isGithubPages && window.location.protocol !== "file:") {
+      const localDirs = await fetchHttpDirListing(`${CREDS_DIR}/`);
+      if (localDirs !== null) {
+        return { folders: localDirs };
+      }
+    }
+
+    return fetchGithubDirFolders(reposPromise);
+  }
+
+  async function fetchHttpDirListing(dirUrl) {
+    try {
+      const baseUrl = new URL(dirUrl, window.location.href);
+      const res = await fetch(baseUrl.href, { cache: "no-cache" });
+      if (!res.ok) return null;
+
+      const ct = (res.headers.get("content-type") || "").toLowerCase();
+      if (ct.includes("application/json")) {
+        const data = await res.json();
+        if (!Array.isArray(data)) return null;
+        const dirs = new Set();
+        for (const entry of data) {
+          if (!entry) continue;
+          const rawName =
+            typeof entry === "string"
+              ? entry
+              : entry.type === "directory" || entry.type === "dir" || entry.is_dir === true
+                ? entry.name
+                : "";
+          if (typeof rawName !== "string") continue;
+          const name = rawName.replace(/\/+$/, "");
+          if (name && !name.startsWith(".") && !name.includes("/")) dirs.add(name);
+        }
+        return Array.from(dirs);
+      }
+
+      if (ct.includes("text/html")) {
+        return parseDirListingHtml(await res.text(), baseUrl);
+      }
+    } catch {}
+    return null;
+  }
+
+  function parseDirListingHtml(html, baseUrl) {
+    if (!html) return null;
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    if (doc.getElementById("grid-container") || doc.querySelector(".profile-card")) {
+      return null;
+    }
+
+    const titleText = doc.querySelector("title")?.textContent?.trim() || "";
+    const h1Text = doc.querySelector("h1")?.textContent?.trim() || "";
+    const isKnownIndex =
+      RE_DIR_TITLE.test(titleText) ||
+      RE_DIR_TITLE.test(h1Text) ||
+      Boolean(doc.querySelector("ul#files"));
+
+    const basePath = baseUrl.pathname.endsWith("/") ? baseUrl.pathname : `${baseUrl.pathname}/`;
+    const dirs = new Set();
+    let hasParentLink = false;
+    let hasExplicitDirHint = false;
+
+    for (const a of doc.querySelectorAll("a[href]")) {
+      const rawHref = a.getAttribute("href");
+      if (!rawHref || rawHref.startsWith("#") || rawHref.startsWith("?")) continue;
+
+      let u;
+      try {
+        u = new URL(rawHref, baseUrl);
+      } catch {
+        continue;
+      }
+      if (u.origin !== baseUrl.origin || u.search) continue;
+
+      const linkText = a.textContent.trim();
+      if (
+        rawHref === "../" ||
+        rawHref === ".." ||
+        linkText === ".." ||
+        linkText === "../" ||
+        /parent directory/i.test(linkText) ||
+        (basePath.startsWith(u.pathname) && u.pathname.length < basePath.length)
+      ) {
+        hasParentLink = true;
+      }
+
+      if (!u.pathname.startsWith(basePath) || u.pathname.length <= basePath.length) continue;
+
+      const rel = u.pathname.slice(basePath.length);
+      const hasTrailingSlash = rel.endsWith("/");
+      const trimmed = hasTrailingSlash ? rel.slice(0, -1) : rel;
+      if (!trimmed || trimmed.includes("/")) continue;
+
+      let name = trimmed;
+      try {
+        name = decodeURIComponent(trimmed);
+      } catch {}
+      if (!name || name.startsWith(".") || name === "..") continue;
+
+      const explicitDir =
+        hasTrailingSlash ||
+        linkText.endsWith("/") ||
+        RE_DIR_CLASS.test(a.className || "");
+
+      if (explicitDir || !RE_EXT_LIKELY.test(name)) {
+        dirs.add(name);
+        if (explicitDir) hasExplicitDirHint = true;
+      }
+    }
+
+    if (!isKnownIndex && !hasParentLink && !hasExplicitDirHint) return null;
+    return Array.from(dirs);
+  }
+
+  async function fetchGithubDirFolders(reposPromise) {
+    const candidates = await buildGithubRepoCandidates(reposPromise);
+    const shrinkDirs = (entries) =>
+      Array.isArray(entries)
+        ? entries
+            .filter((e) => e && e.type === "dir" && typeof e.name === "string" && !e.name.startsWith("."))
+            .map((e) => ({ name: e.name, type: "dir" }))
+        : [];
+
+    let lastError = null;
+    for (const { owner, repo, path } of candidates) {
+      const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodePath(path)}`;
+      const cacheKey = `portal_cache_cert_dirs_${owner}_${repo}_${path}`;
+      const res = await fetchJson(url, cacheKey, shrinkDirs);
+
+      if (Array.isArray(res.data)) {
+        const dirs = [];
+        for (const e of res.data) {
+          if (e && e.type === "dir" && typeof e.name === "string" && !e.name.startsWith(".")) {
+            dirs.push(e.name);
+          }
+        }
+        return { folders: dirs };
+      }
+
+      lastError = res.error;
+      if (res.status === 403 || res.status === 429) break;
+    }
+
+    return { folders: null, error: lastError };
+  }
+
+  async function buildGithubRepoCandidates(reposPromise) {
+    const loc = window.location;
+    const host = loc.hostname.toLowerCase();
+    const rawSegs = loc.pathname.split("/").filter(Boolean);
+    const lastSeg = rawSegs[rawSegs.length - 1] || "";
+    const dirSegs = lastSeg.includes(".") ? rawSegs.slice(0, -1) : rawSegs;
+    const list = [];
+    const seen = new Set();
+
+    const add = (owner, repo, segs) => {
+      if (!owner || !repo) return;
+      const path = [...segs, CREDS_DIR].join("/");
+      const key = `${owner.toLowerCase()}/${repo.toLowerCase()}/${path}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      list.push({ owner, repo, path });
+    };
+
+    if (host.endsWith(".github.io")) {
+      const owner = host.slice(0, -".github.io".length) || USER;
+      const userSiteRepo = `${owner}.github.io`;
+
+      if (dirSegs.length === 0) {
+        add(owner, userSiteRepo, []);
+        return list;
+      }
+
+      const reposRes = await reposPromise;
+      const repos = Array.isArray(reposRes?.data) ? reposRes.data : [];
+      const first = dirSegs[0];
+      const matched = repos.find((r) => r?.name?.toLowerCase() === first.toLowerCase());
+
+      if (matched) {
+        add(owner, matched.name, dirSegs.slice(1));
+        add(owner, userSiteRepo, dirSegs);
+      } else if (repos.length > 0) {
+        add(owner, userSiteRepo, dirSegs);
+        add(owner, first, dirSegs.slice(1));
+      } else {
+        add(owner, first, dirSegs.slice(1));
+        add(owner, userSiteRepo, dirSegs);
+      }
+      return list;
+    }
+
+    const reposRes = await reposPromise;
+    const repos = Array.isArray(reposRes?.data) ? reposRes.data : [];
+
+    if (host && !LOCAL_HOSTS.has(host)) {
+      for (const r of repos) {
+        if (!r?.homepage) continue;
+        try {
+          const home = new URL(
+            RE_HTTP_PREFIX.test(r.homepage) ? r.homepage : `https://${r.homepage}`
+          );
+          if (home.hostname.toLowerCase() === host) {
+            add(USER, r.name, dirSegs);
+            if (dirSegs.length > 0) add(USER, r.name, []);
+          }
+        } catch {}
+      }
+    }
+
+    add(USER, `${USER}.github.io`, []);
+    if (dirSegs.length > 0) add(USER, `${USER}.github.io`, dirSegs);
+
+    for (const r of repos) {
+      if (r?.has_pages && r.name) {
+        add(USER, r.name, []);
+      }
+    }
+
+    return list;
+  }
+
+  function resolveCertPreview(raw, subcatRel) {
+    if (typeof raw !== "string") return null;
+    const s = raw.trim();
+    if (!s) return null;
+    if (
+      RE_DATA_PREFIX.test(s) ||
+      RE_HTTP_PREFIX.test(s) ||
+      s.startsWith("//") ||
+      s.startsWith("/")
+    ) {
+      return sanitizeUrl(s, true);
+    }
+    if (RE_SCHEME.test(s)) return null;
+    const rel = encodePath(s.replace(RE_REL_PREFIX, ""));
+    if (!rel) return null;
+    return rel.startsWith(`${CREDS_DIR}/`) ? rel : `${CREDS_DIR}/${subcatRel}/${rel}`;
   }
 
   function inspectGistFiles(files) {
@@ -454,11 +880,13 @@
         return { data: cachedEntry.data };
       }
       if (!res.ok) {
-        throw new Error(
+        const err = new Error(
           res.status === 403 || res.status === 429
             ? "GitHub API rate limit exceeded."
             : `Failed to load (HTTP ${res.status}).`
         );
+        err.status = res.status;
+        throw err;
       }
       const data = await res.json();
       if (cacheKey) {
@@ -469,7 +897,7 @@
       return { data };
     } catch (err) {
       if (cachedEntry?.data) return { data: cachedEntry.data };
-      return { error: err?.message || "Network error." };
+      return { error: err?.message || "Network error.", status: err?.status || 0 };
     }
   }
 
@@ -750,12 +1178,14 @@
     if (!grid) return;
 
     renderedBoxes.clear();
+    syncSubtabs();
+
     const items = state[currentTab];
     if (!items.length) {
       const err = state.errors[currentTab];
       const msg = err
-        ? currentTab === "certs"
-          ? "Unable to load certificates."
+        ? currentTab === "certs" && err !== "GitHub API rate limit exceeded."
+          ? "Unable to load Credentials."
           : err
         : `No ${EMPTY_LABELS[currentTab]} found.`;
       grid.replaceChildren(msgNode(msg, Boolean(err)));
@@ -763,9 +1193,35 @@
     }
 
     const frag = document.createDocumentFragment();
-    for (let i = 0; i < items.length; i++) {
-      frag.append(createCard(items[i], i));
+    if (currentTab === "certs") {
+      if (currentCertCategory === "all") {
+        let cardIdx = 0;
+        for (const cat of state.certCategories) {
+          frag.append(
+            el(
+              "div",
+              "cert-section-header",
+              el("h2", "cert-section-title", cat.title),
+              el("span", "cert-section-count", String(cat.items.length))
+            )
+          );
+          for (const item of cat.items) {
+            frag.append(createCard(item, cardIdx++));
+          }
+        }
+      } else {
+        const selected = state.certCategories.find((c) => c.id === currentCertCategory);
+        const catItems = selected ? selected.items : items;
+        for (let i = 0; i < catItems.length; i++) {
+          frag.append(createCard(catItems[i], i));
+        }
+      }
+    } else {
+      for (let i = 0; i < items.length; i++) {
+        frag.append(createCard(items[i], i));
+      }
     }
+
     grid.replaceChildren(frag);
   }
 
@@ -866,6 +1322,7 @@
   }
 
   const titleOf = (s) => String(s || "").replace(/[-_]+/g, " ").trim();
+  const categoryTitleOf = (s) => titleOf(s).replace(/\b[a-z]/g, (ch) => ch.toUpperCase());
   const stemOf = (f) => {
     const i = f.lastIndexOf(".");
     return i > 0 ? f.slice(0, i) : f;

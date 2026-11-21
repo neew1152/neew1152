@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<html lang="en">
 
 <head>
   <meta charset="UTF-8">
@@ -12,7 +13,7 @@
 <body>
   <div class="container">
     <header class="profile-card">
-      <img src="assets/profile.png" class="avatar">
+      <img src="profile.png" alt="Nopphakon Boonsong" class="avatar">
       <div class="profile-info">
         <h1>Nopphakon Boonsong</h1>
         <ul class="contact-list">
@@ -23,11 +24,12 @@
       </div>
     </header>
     <nav class="tab-nav">
-      <button class="tab-btn" data-tab="certs">📜 Certificates</button>
+      <button class="tab-btn" data-tab="certs">📜 Credentials</button>
       <button class="tab-btn" data-tab="gists">📝 Gists</button>
       <button class="tab-btn active" data-tab="repos">💻 Repositories</button>
     </nav>
     <main>
+      <div id="subtab-nav" class="subtab-nav" hidden></div>
       <div id="grid-container" class="grid">
         <div class="loading-state">JavaScript...</div>
       </div>
@@ -36,5 +38,5 @@
   <script src="script.js"></script>
   <script src="animation.js" defer></script>
 </body>
-  
+
 </html>
