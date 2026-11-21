@@ -95,7 +95,7 @@
   --ui-nav-pad: var(--ui-space-1);
   --ui-nav-gap: var(--ui-space-1);
 
-  --ui-grid-cols: 2;
+  --ui-grid-cols: 3;
   --ui-grid-gap: clamp(16px, 1.8vw, 20px);
 
   --ui-card-aspect: 16 / 9;
@@ -821,9 +821,9 @@ body {
   color: var(--ui-color-text-primary-bluish);
 }
 
-@media (max-width: 600px) {
+@media (max-width: 1024px) {
   :root {
-    --ui-grid-cols: 1;
+    --ui-grid-cols: 2;
   }
 
   .tab-nav,
