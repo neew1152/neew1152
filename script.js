@@ -8,6 +8,7 @@
   const IMG_EXTS = new Set(["png", "jpg", "jpeg", "webp", "gif"]);
   const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
   const PREVIEW_CACHE_KEY = `portal_previews_${USER}`;
+  const PREVIEW_CACHE_SCHEMA = 2;
   const NEGATIVE_TTL_MS = 24 * 60 * 60 * 1000;
 
   const RE_MD_EXT = /^(?:md|markdown|mdx)$/;
@@ -24,6 +25,8 @@
   const RE_DIR_TITLE = /^(?:Directory listing for|Index of)\b/i;
   const RE_DIR_CLASS = /(?:^|[\s_-])(?:dir|directory|folder)(?:$|[\s_-])/i;
   const RE_EXT_LIKELY = /\.[a-z0-9]{1,10}$/i;
+  const RE_GITHUB_BLOB = /^\/[^/]+\/[^/]+\/blob\//i;
+  const RE_GITHUB_REL_PATH = /^\/[^/]+\/[^/]+\/(?:blob|raw)\//i;
 
   if (typeof pdfjsLib !== "undefined") {
     pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -95,7 +98,11 @@
       const safe = sanitizeUrl(entry.p, true);
       return safe ? { hit: true, preview: safe } : null;
     }
-    if (entry.p === "" && now - (entry.t || 0) < NEGATIVE_TTL_MS) {
+    if (
+      entry.p === "" &&
+      entry.s === PREVIEW_CACHE_SCHEMA &&
+      now - (entry.t || 0) < NEGATIVE_TTL_MS
+    ) {
       return { hit: true, preview: null };
     }
     return null;
@@ -103,7 +110,9 @@
 
   function writePreviewCache(key, version, preview) {
     const cache = getPreviewCache();
-    cache[key] = preview ? { v: version, p: preview } : { v: version, p: "", t: Date.now() };
+    cache[key] = preview
+      ? { v: version, p: preview, s: PREVIEW_CACHE_SCHEMA }
+      : { v: version, p: "", t: Date.now(), s: PREVIEW_CACHE_SCHEMA };
     previewCacheDirty = true;
     scheduleCacheFlush();
   }
@@ -391,6 +400,8 @@
             fallback: ["💻", (r.language || "REPO").toUpperCase()],
             fullName: r.full_name,
             branch: encodePath(r.default_branch),
+            hasPages: Boolean(r.has_pages),
+            isHtml: r.language === "HTML",
             cacheKey,
             cacheVer,
           });
@@ -405,7 +416,7 @@
         for (const g of gistsRes.data) {
           if (!g) continue;
           const files = g.files || {};
-          const { first, firstFile, imgUrl, textFile } = inspectGistFiles(files);
+          const { first, firstFile, imgUrl, textFiles } = inspectGistFiles(files);
           const stem = stemOf(first);
           const rawDesc = (g.description || "").trim();
           const lowerDesc = rawDesc.toLowerCase();
@@ -413,12 +424,12 @@
             !rawDesc || lowerDesc === first.toLowerCase() || lowerDesc === stem.toLowerCase();
 
           const cacheKey = `g:${g.id}`;
-          const cacheVer = g.updated_at || textFile?.raw_url || "";
+          const cacheVer = g.updated_at || textFiles[0]?.raw_url || "";
           validGistKeys.add(cacheKey);
 
           let preview = imgUrl;
           let checked = false;
-          if (!preview && textFile) {
+          if (!preview && textFiles.length > 0) {
             const cached = readPreviewCache(cacheKey, cacheVer, now);
             if (cached) {
               preview = cached.preview;
@@ -431,10 +442,10 @@
             title: titleOf(stem),
             desc: hideDesc ? "" : rawDesc,
             preview,
-            loading: !preview && !checked && Boolean(textFile),
+            loading: !preview && !checked && textFiles.length > 0,
             fallback: ["📝", firstFile?.language || (extOf(first) || "gist").toUpperCase()],
             files,
-            textFile,
+            textFiles,
             cacheKey,
             cacheVer,
           });
@@ -812,9 +823,9 @@
     let firstKey = "";
     let firstFile = null;
     let imgUrl = null;
-    let mdFile = null;
-    let htmlFile = null;
-    let textFile = null;
+    const mdFiles = [];
+    const htmlFiles = [];
+    const otherTextFiles = [];
 
     for (const [k, f] of Object.entries(files)) {
       if (!firstKey) {
@@ -828,25 +839,23 @@
         imgUrl = sanitizeUrl(f.raw_url);
       }
 
+      if (!f.raw_url || (typeof f.size === "number" && f.size > 512 * 1024)) continue;
+
       const lang = f.language;
-      if (!mdFile && (RE_MD_EXT.test(ext) || lang === "Markdown")) {
-        mdFile = f;
-      } else if (!htmlFile && (RE_HTML_EXT.test(ext) || lang === "HTML")) {
-        htmlFile = f;
-      } else if (!textFile && (!ext || lang === "Text")) {
-        textFile = f;
+      if (RE_MD_EXT.test(ext) || lang === "Markdown") {
+        mdFiles.push(f);
+      } else if (RE_HTML_EXT.test(ext) || lang === "HTML") {
+        htmlFiles.push(f);
+      } else if (!ext || lang === "Text") {
+        otherTextFiles.push(f);
       }
     }
 
-    const bestText = mdFile || htmlFile || textFile;
     return {
       first: firstKey || "Gist",
       firstFile,
       imgUrl,
-      textFile:
-        bestText && bestText.raw_url && !(typeof bestText.size === "number" && bestText.size > 512 * 1024)
-          ? bestText
-          : null,
+      textFiles: [...mdFiles, ...htmlFiles, ...otherTextFiles],
     };
   }
 
@@ -927,23 +936,45 @@
     if (tasks[tab]) return tasks[tab];
     const items = state[tab].filter((it) => !it.preview && it.loading);
 
-    const warmText = (getUrl, resolveImg) =>
-      pool(6, items, async (it) => {
-        const res = await fetch(getUrl(it));
-        if (!res.ok) {
-          if (res.status === 404) writePreviewCache(it.cacheKey, it.cacheVer, "");
-          return;
-        }
-        const img = extractFirstImage(await res.text(), (u) => resolveImg(u, it));
-        writePreviewCache(it.cacheKey, it.cacheVer, img || "");
-        if (img) updatePreview(it, img);
-      }).finally(flushPreviewCache);
-
     if (tab === "repos") {
-      tasks[tab] = warmText(
-        (r) => `https://raw.githubusercontent.com/${r.fullName}/${r.branch}/README.md`,
-        (u, r) => resolveRepoImg(u, r.fullName, r.branch)
-      );
+      tasks[tab] = pool(6, items, async (r) => {
+        const base = `https://raw.githubusercontent.com/${r.fullName}/${r.branch}`;
+        const candidates = [`${base}/README.md`, `${base}/readme.md`];
+        let allTerminal = true;
+        let found = null;
+
+        for (let idx = 0; idx < candidates.length; idx++) {
+          const res = await fetch(candidates[idx]);
+          if (res.ok) {
+            found = extractFirstImage(await res.text(), (u) =>
+              resolveRepoImg(u, r.fullName, r.branch)
+            );
+            break;
+          }
+          if (res.status !== 404) {
+            allTerminal = false;
+            break;
+          }
+        }
+
+        if (!found && allTerminal && (r.hasPages || r.isHtml)) {
+          const res = await fetch(`${base}/index.html`);
+          if (res.ok) {
+            found = extractFirstImage(await res.text(), (u) =>
+              resolveRepoImg(u, r.fullName, r.branch)
+            );
+          } else if (res.status !== 404) {
+            allTerminal = false;
+          }
+        }
+
+        if (found) {
+          writePreviewCache(r.cacheKey, r.cacheVer, found);
+          updatePreview(r, found);
+        } else if (allTerminal) {
+          writePreviewCache(r.cacheKey, r.cacheVer, "");
+        }
+      }).finally(flushPreviewCache);
     } else if (tab === "certs") {
       tasks[tab] = pool(2, items, async (c) => {
         try {
@@ -954,10 +985,30 @@
         }
       });
     } else if (tab === "gists") {
-      tasks[tab] = warmText(
-        (g) => g.textFile.raw_url,
-        (u, g) => resolveGistImg(u, g.files)
-      );
+      tasks[tab] = pool(6, items, async (g) => {
+        let allTerminal = true;
+        let found = null;
+
+        for (const f of g.textFiles) {
+          const res = await fetch(f.raw_url);
+          if (!res.ok) {
+            if (res.status !== 404) allTerminal = false;
+            continue;
+          }
+          const img = extractFirstImage(await res.text(), (u) => resolveGistImg(u, g.files));
+          if (img) {
+            found = img;
+            break;
+          }
+        }
+
+        if (found) {
+          writePreviewCache(g.cacheKey, g.cacheVer, found);
+          updatePreview(g, found);
+        } else if (allTerminal) {
+          writePreviewCache(g.cacheKey, g.cacheVer, "");
+        }
+      }).finally(flushPreviewCache);
     }
 
     return tasks[tab];
@@ -1021,6 +1072,75 @@
     return false;
   }
 
+  function readImgSrc(str, startIdx) {
+    const len = str.length;
+    let i = startIdx;
+    let src = "";
+    let closed = false;
+
+    while (i < len) {
+      while (i < len && (str[i] === "/" || /\s/.test(str[i]))) i++;
+      if (i >= len) break;
+      if (str[i] === ">") {
+        closed = true;
+        i++;
+        break;
+      }
+      if (str[i] === "<") break;
+
+      const nameStart = i;
+      while (i < len && !/[\s=/>"'<]/.test(str[i])) i++;
+      if (i === nameStart) {
+        const ch = str[i];
+        if (ch === '"' || ch === "'") {
+          i++;
+          while (i < len && str[i] !== ch) i++;
+          if (i < len) i++;
+        } else {
+          i++;
+        }
+        continue;
+      }
+
+      const attrName = str.slice(nameStart, i).toLowerCase();
+      while (i < len && /\s/.test(str[i])) i++;
+
+      let attrVal = "";
+      if (i < len && str[i] === "=") {
+        i++;
+        while (i < len && /\s/.test(str[i])) i++;
+        if (i < len) {
+          const quote = str[i];
+          if (quote === '"' || quote === "'") {
+            i++;
+            const valStart = i;
+            while (i < len && str[i] !== quote) i++;
+            attrVal = str.slice(valStart, i);
+            if (i < len) i++;
+          } else {
+            const valStart = i;
+            while (
+              i < len &&
+              str[i] !== ">" &&
+              str[i] !== "<" &&
+              !/\s/.test(str[i]) &&
+              !(str[i] === "/" && str[i + 1] === ">")
+            ) {
+              i++;
+            }
+            attrVal = str.slice(valStart, i);
+          }
+        }
+      }
+
+      if (attrName === "src" && !src && attrVal.trim()) {
+        src = attrVal;
+      }
+    }
+
+    return { src, nextIndex: i, closed };
+  }
+
   function extractFirstImage(content, resolveFn) {
     if (!content || !/!\[|<img/i.test(content)) return null;
 
@@ -1051,10 +1171,11 @@
 
     clean = clean
       .replace(/<!--(?:[^-]|-(?!->))*-->/g, "")
+      .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, "")
       .replace(/``[^`\r\n]+``|`[^`\r\n]+`/g, "");
 
     const reImg =
-      /!\[[^\]]*\]\(\s*(?:<([^>]+)>|(?![\s)])([^\s()]*(?:\([^\s()]*\)[^\s()]*)*))(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)|!\[([^\]]*)\]\[([^\]]*)\]|<img\b[^>]*?\ssrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/gi;
+      /!\[[^\]]*\]\(\s*(?:<([^>]+)>|(?![\s)])([^\s()]*(?:\([^\s()]*\)[^\s()]*)*))(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)|!\[([^\]]*)\]\[([^\]]*)\]|<img(?=[\s/])/gi;
 
     let m;
     let refs = null;
@@ -1073,7 +1194,9 @@
         }
         raw = refs.get((m[4] || m[3]).trim().toLowerCase()) || "";
       } else {
-        raw = (m[5] || m[6] || m[7] || "").replace(/&amp;|&#(?:38|x26);/gi, "&").trim();
+        const { src, nextIndex, closed } = readImgSrc(clean, m.index + m[0].length);
+        if (closed || src) reImg.lastIndex = nextIndex;
+        raw = src.replace(/&amp;|&#(?:38|x26);/gi, "&").trim();
       }
 
       if (raw) {
@@ -1086,29 +1209,36 @@
     return null;
   }
 
+  function normalizeHttpImgUrl(url) {
+    try {
+      const u = new URL(url);
+      if (
+        u.hostname.toLowerCase() === "github.com" &&
+        RE_GITHUB_BLOB.test(u.pathname) &&
+        !u.searchParams.has("raw")
+      ) {
+        u.searchParams.set("raw", "true");
+      }
+      return u.href;
+    } catch {
+      return null;
+    }
+  }
+
   function resolveRepoImg(raw, fullName, branch) {
     if (RE_DATA_PREFIX.test(raw)) return raw;
-    const url = raw.startsWith("//") ? `https:${raw}` : raw;
-
-    if (RE_HTTP_PREFIX.test(url)) {
-      try {
-        const u = new URL(url);
-        if (
-          u.hostname.toLowerCase() === "github.com" &&
-          /^\/[^/]+\/[^/]+\/blob\//i.test(u.pathname) &&
-          !u.searchParams.has("raw")
-        ) {
-          u.searchParams.set("raw", "true");
-        }
-        return u.href;
-      } catch {
-        return null;
-      }
+    let url = raw.startsWith("//") ? `https:${raw}` : raw;
+    if (url.startsWith("/") && RE_GITHUB_REL_PATH.test(url)) {
+      url = `https://github.com${url}`;
     }
 
-    if (RE_SCHEME.test(url)) return null;
+    if (RE_HTTP_PREFIX.test(url)) {
+      return normalizeHttpImgUrl(url);
+    }
+
+    if (RE_SCHEME.test(url) || url.startsWith("?") || url.startsWith("#")) return null;
     const rel = url.replace(RE_REL_PREFIX, "");
-    if (!rel) return null;
+    if (!rel || rel.startsWith("?") || rel.startsWith("#")) return null;
 
     try {
       const prefix = `/${fullName}/${branch}/`;
@@ -1124,7 +1254,7 @@
   function resolveGistImg(raw, files) {
     if (RE_DATA_PREFIX.test(raw)) return raw;
     const url = raw.startsWith("//") ? `https:${raw}` : raw;
-    if (RE_HTTP_PREFIX.test(url)) return url;
+    if (RE_HTTP_PREFIX.test(url)) return normalizeHttpImgUrl(url);
     if (RE_SCHEME.test(url) || !files) return null;
 
     const qIdx = url.search(/[?#]/);
@@ -1269,28 +1399,13 @@
       img.alt = item.title;
       img.loading = "lazy";
       img.decoding = "async";
-      if (item.isCert || item.contain) img.classList.add("is-contain");
 
-      img.addEventListener(
-        "load",
-        () => {
-          if (!item.isCert && img.naturalWidth > 0 && img.naturalHeight > 0) {
-            const ratio = img.naturalWidth / img.naturalHeight;
-            if (ratio < 1.15 || ratio > 2.6) {
-              item.contain = true;
-              img.classList.add("is-contain");
-            }
-          }
-        },
-        { once: true }
-      );
       img.addEventListener(
         "error",
         () => {
           if (src.startsWith("blob:")) URL.revokeObjectURL(src);
           item.preview = null;
           item.loading = false;
-          item.contain = false;
           if (item.cacheKey) deletePreviewCache(item.cacheKey);
           fillPreview(item, box);
         },

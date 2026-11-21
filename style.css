@@ -101,7 +101,7 @@
   --ui-nav-pad: var(--ui-space-1);
   --ui-nav-gap: var(--ui-space-1);
 
-  --ui-grid-cols: 4;
+  --ui-grid-cols: 2;
   --ui-grid-gap: clamp(16px, 1.8vw, 20px);
 
   --ui-card-aspect: 16 / 9;
@@ -464,18 +464,6 @@ body {
   align-items: stretch;
 }
 
-@media (max-width: 1200px) {
-  :root {
-    --ui-grid-cols: 3;
-  }
-}
-
-@media (max-width: 900px) {
-  :root {
-    --ui-grid-cols: 2;
-  }
-}
-
 .card {
   display: flex;
   flex-direction: column;
@@ -538,6 +526,8 @@ body {
 }
 
 .card-preview img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   display: block;
@@ -547,13 +537,8 @@ body {
   transition: transform var(--ui-duration-medium) var(--ui-ease), opacity var(--ui-duration-base) ease;
 }
 
-.card-preview img.is-contain {
-  object-fit: contain;
-  padding: var(--ui-space-3);
-}
-
 @media (hover: hover) {
-  .card:hover .card-preview img:not(.is-contain) {
+  .card:hover .card-preview img {
     transform: scale(var(--ui-card-img-scale));
   }
 }
