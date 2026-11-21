@@ -1,7 +1,6 @@
 @import url("https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;600;700&display=swap");
 
 :root {
-  /* Colors (preserved) */
   --ui-color-text-primary: #1e232c;
   --ui-color-text-primary-bluish: #152443;
   --ui-color-text-link-blue: #234792;
@@ -31,7 +30,6 @@
   --ui-btn-secondary-hover-bg: rgba(0, 0, 0, 0.05);
   --ui-btn-secondary-hover-border: rgba(9, 45, 78, 0.36);
 
-  /* Radii & Blur */
   --ui-radius-pill: 100px;
   --ui-radius-card: 24px;
   --ui-radius-panel: 16px;
@@ -41,7 +39,6 @@
   --ui-blur-glass: 12px;
   --ui-blur-glass-lg: 16px;
 
-  /* Shadows (colors preserved) */
   --ui-shadow-card: 0 0 0 1px #f1f5f9, 0 2px 4px rgba(0, 0, 0, 0.05), 0 12px 24px rgba(0, 0, 0, 0.05);
   --ui-shadow-card-hover:
     0 0 0 1px rgba(65, 118, 230, 0.08),
@@ -56,7 +53,6 @@
   --ui-shadow-tab-active: 0 1px 4px rgba(65, 118, 230, 0.08);
   --ui-shadow-dropdown: 0 0 1px 0 rgba(0, 0, 0, 0.2), 0 0 4px 0 rgba(0, 0, 0, 0.02), 0 12px 32px 0 rgba(0, 0, 0, 0.08);
 
-  /* Typography */
   --ui-text-xs: 12px;
   --ui-text-sm: 14px;
   --ui-text-md: 16px;
@@ -75,7 +71,6 @@
   --ui-tracking-wide: 0.06em;
   --ui-heading-opacity: 0.94;
 
-  /* Spacing Scale (4px grid) */
   --ui-space-1: 4px;
   --ui-space-2: 8px;
   --ui-space-3: 12px;
@@ -83,7 +78,6 @@
   --ui-space-6: 24px;
   --ui-space-7: 28px;
 
-  /* Dynamic Layout & Component Variables */
   --ui-backdrop-max-height: 900px;
   --ui-backdrop-mask-stop: 12%;
 
@@ -95,7 +89,7 @@
   --ui-profile-gap: clamp(20px, 2.5vw, 28px);
   --ui-profile-pad-y: clamp(24px, 2.5vw, 28px);
   --ui-profile-pad-x: clamp(20px, 3vw, 32px);
-  --ui-avatar-size: clamp(72px, 8vw, 88px);
+  --ui-avatar-size: clamp(96px, 10vw, 120px);
 
   --ui-nav-sticky-top: 16px;
   --ui-nav-pad: var(--ui-space-1);
@@ -117,7 +111,6 @@
   --ui-icon-md: 20px;
   --ui-badge-size: 20px;
 
-  /* Motion & Z-index */
   --ui-ease: cubic-bezier(0.45, 0, 0.55, 1);
   --ui-duration-instant: 0.1s;
   --ui-duration-fast: 0.2s;
