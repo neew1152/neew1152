@@ -7,7 +7,7 @@
   const TABS = Object.keys(EMPTY_LABELS);
   const IMG_EXTS = new Set(["png", "jpg", "jpeg", "webp", "gif"]);
   const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
-  const PREVIEW_CACHE_KEY = `portal_previews_${USER}`;
+  const PREVIEW_CACHE_KEY = `previews_${USER}`;
   const PREVIEW_CACHE_SCHEMA = 2;
   const NEGATIVE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -144,7 +144,7 @@
   window.addEventListener("pagehide", flushPreviewCache);
 
   /* =========================================================
-     Portal Tabs & Data Loading
+     Tabs & Data Loading
      ========================================================= */
 
   function setupTabs() {
@@ -301,7 +301,7 @@
     if (!grid) return;
 
     grid.setAttribute("aria-busy", "true");
-    grid.replaceChildren(msgNode("Loading portal data..."));
+    grid.replaceChildren(msgNode("Loading data..."));
 
     const shrinkRepos = (rs) => {
       if (!Array.isArray(rs)) return [];
@@ -351,12 +351,12 @@
       const user = encodeURIComponent(USER);
       const reposPromise = fetchJson(
         `https://api.github.com/users/${user}/repos?sort=updated&per_page=100`,
-        `portal_cache_repos_${USER}`,
+        `cache_repos_${USER}`,
         shrinkRepos
       );
       const gistsPromise = fetchJson(
         `https://api.github.com/users/${user}/gists?per_page=100`,
-        `portal_cache_gists_${USER}`,
+        `cache_gists_${USER}`,
         shrinkGists
       );
       const certsPromise = loadCredentials(reposPromise);
@@ -706,7 +706,7 @@
     let lastError = null;
     for (const { owner, repo, path } of candidates) {
       const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodePath(path)}`;
-      const cacheKey = `portal_cache_cert_dirs_${owner}_${repo}_${path}`;
+      const cacheKey = `cache_cert_dirs_${owner}_${repo}_${path}`;
       const res = await fetchJson(url, cacheKey, shrinkDirs);
 
       if (Array.isArray(res.data)) {
